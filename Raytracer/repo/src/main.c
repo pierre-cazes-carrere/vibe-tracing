@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include "image.h"
 
 #define IMAGE_WIDTH 800
 #define IMAGE_HEIGHT 600
@@ -53,9 +54,27 @@ int main() {
     printf("Ray Tracer - Version C\n");
     printf("Image: %dx%d\n", IMAGE_WIDTH, IMAGE_HEIGHT);
     
-    Vec3 test = vec3_new(1.0f, 2.0f, 3.0f);
-    printf("Test vector: (%.2f, %.2f, %.2f)\n", test.x, test.y, test.z);
-    printf("Length: %.2f\n", vec3_length(test));
+    // Create image
+    Image* img = image_create(IMAGE_WIDTH, IMAGE_HEIGHT);
+    
+    // Fill with gradient
+    for (int y = 0; y < IMAGE_HEIGHT; y++) {
+        for (int x = 0; x < IMAGE_WIDTH; x++) {
+            float r = (float)x / IMAGE_WIDTH;
+            float g = (float)y / IMAGE_HEIGHT;
+            float b = 0.5f;
+            image_set_pixel(img, x, y, (Color){r, g, b});
+        }
+    }
+    
+    // Save to PPM
+    if (image_write_ppm(img, "output.ppm")) {
+        printf("Image saved to output.ppm\n");
+    } else {
+        printf("Error saving image\n");
+    }
+    
+    image_free(img);
     
     return 0;
 }

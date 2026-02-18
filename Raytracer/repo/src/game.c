@@ -42,16 +42,11 @@ void game_free(GameState* game) {
 void game_update(GameState* game, float delta_time) {
     game->time_elapsed += delta_time;
     
-    // Simple player movement in a circle
-    float speed = 2.0f;
-    float angle = game->time_elapsed * speed;
-    game->player_pos.x = sinf(angle) * 1.5f;
-    game->player_pos.z = cosf(angle) * 1.5f;
-    game->player_pos.y = 0.0f;
+    // Player movement is now handled by game_handle_input
     
     // Animate enemies (bob up and down)
     for (int i = 0; i < game->enemy_count; i++) {
-        game->enemies[i].bob_offset = sinf(game->time_elapsed * 2.0f + i) * 0.5f;
+        game->enemies[i].bob_offset = sinf(game->time_elapsed * 2.0f + i) * 0.3f;
         game->enemies[i].angle = game->time_elapsed * 0.5f;
     }
     
@@ -98,4 +93,35 @@ void game_populate_scene(GameState* game, Scene* scene) {
         );
         scene_add_object(scene, collectible);
     }
+}
+
+void game_handle_input(GameState* game, int key_up, int key_down, int key_left, int key_right) {
+    if (!game) return;
+    
+    float speed = 3.0f;  // Movement speed
+    Vec3 move = vec3_new(0.0f, 0.0f, 0.0f);
+    
+    // ZQSD or WASD controls
+    if (key_up) {
+        move.z += speed;  // Move forward
+    }
+    if (key_down) {
+        move.z -= speed;  // Move backward
+    }
+    if (key_left) {
+        move.x -= speed;  // Move left
+    }
+    if (key_right) {
+        move.x += speed;  // Move right
+    }
+    
+    // Clamp player position to bounds
+    game->player_pos.x += move.x;
+    game->player_pos.z += move.z;
+    
+    float bound = 3.0f;
+    if (game->player_pos.x > bound) game->player_pos.x = bound;
+    if (game->player_pos.x < -bound) game->player_pos.x = -bound;
+    if (game->player_pos.z > bound) game->player_pos.z = bound;
+    if (game->player_pos.z < -bound) game->player_pos.z = -bound;
 }

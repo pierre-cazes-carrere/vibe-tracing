@@ -24,9 +24,9 @@ for %%f in (%SRC_DIR%\*.c) do (
     )
 )
 
-REM Link
+REM Link with Windows libraries
 echo Linking...
-"%GCC%" %BUILD_DIR%\*.o -o "%BIN_DIR%\raytracer.exe" -lm -Wall -Wextra -O2
+"%GCC%" %BUILD_DIR%\*.o -o "%BIN_DIR%\raytracer.exe" -lm -luser32 -lgdi32 -Wall -Wextra -O2
 if errorlevel 1 (
     echo Linking error!
     exit /b 1

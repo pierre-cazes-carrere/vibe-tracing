@@ -43,5 +43,6 @@ GameState* game_create();
 void game_free(GameState* game);
 void game_update(GameState* game, float delta_time);
 void game_populate_scene(GameState* game, Scene* scene);
+void game_handle_input(GameState* game, int key_up, int key_down, int key_left, int key_right);
 
 #endif

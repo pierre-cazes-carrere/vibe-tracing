@@ -1,113 +1,107 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <math.h>
+#include <windows.h>
 #include <time.h>
-#include "math_utils.h"
-#include "image.h"
-#include "ray.h"
-#include "sphere.h"
-#include "material.h"
-#include "raytracer.h"
-#include "display.h"
+#include "window.h"
+#include "renderer.h"
 #include "game.h"
+#include "math_utils.h"
 
-#define IMAGE_WIDTH 400
-#define IMAGE_HEIGHT 300
-#define SAMPLES_PER_PIXEL 8
+#define GAME_WIDTH 1024
+#define GAME_HEIGHT 768
+#define TARGET_FPS 60
 
 int main() {
     srand(time(NULL));
     
-    printf("Ray Tracer Game - Version C\n");
-    printf("Image: %dx%d, Samples: %d\n", IMAGE_WIDTH, IMAGE_HEIGHT, SAMPLES_PER_PIXEL);
+    printf("Ray Tracer Game - Real-time Version\n");
+    printf("Resolution: %dx%d\n", GAME_WIDTH, GAME_HEIGHT);
+    printf("Controls: ZQSD or WASD to move, ESC to quit\n");
     
-    // Create game state
+    // Create window
+    GameWindow* window = window_create(GAME_WIDTH, GAME_HEIGHT, "Ray Tracer Game");
+    if (!window) {
+        printf("Failed to create window\n");
+        return 1;
+    }
+    
+    // Create renderer
+    Renderer* renderer = renderer_create(GAME_WIDTH, GAME_HEIGHT);
+    if (!renderer) {
+        printf("Failed to create renderer\n");
+        window_free(window);
+        return 1;
+    }
+    
+    // Create game
     GameState* game = game_create();
     
-    // Create scene
-    Scene* scene = scene_create();
+    // Camera setup (top-down view centered on player)
+    Vec3 camera_pos = vec3_new(0.0f, 3.0f, 0.0f);
+    Vec3 camera_dir = vec3_new(0.0f, -1.0f, 0.0f);
     
-    // Add materials
-    int mat_player = scene_add_material(scene, material_diffuse(vec3_new(0.2f, 0.8f, 0.2f)));
-    int mat_enemy = scene_add_material(scene, material_diffuse(vec3_new(0.8f, 0.2f, 0.2f)));
-    int mat_gold = scene_add_material(scene, material_metal(vec3_new(1.0f, 0.8f, 0.0f), 0.15f));
-    int mat_ground = scene_add_material(scene, material_diffuse(vec3_new(0.6f, 0.6f, 0.6f)));
+    // Frame timing
+    LARGE_INTEGER frequency, last_count;
+    QueryPerformanceFrequency(&frequency);
+    QueryPerformanceCounter(&last_count);
     
-    game->player_material_id = mat_player;
+    float frame_time = 1.0f / TARGET_FPS;
+    int frame_count = 0;
+    float elapsed_time = 0.0f;
     
-    // Populate scene with game objects
-    game_populate_scene(game, scene);
+    printf("\nGame started! Move with ZQSD/WASD, press ESC to quit\n");
     
-    // Create image
-    Image* img = image_create(IMAGE_WIDTH, IMAGE_HEIGHT);
-    
-    // Create display
-    Display* display = display_create(IMAGE_WIDTH, IMAGE_HEIGHT, "Ray Tracer Game");
-    
-    // Camera setup
-    Vec3 camera_pos = vec3_new(0.0f, 1.5f, 3.0f);
-    float aspect = (float)IMAGE_WIDTH / IMAGE_HEIGHT;
-    float fov = 60.0f;
-    float tan_half_fov = tanf((fov / 2.0f) * 3.14159f / 180.0f);
-    
-    Vec3 viewport_height_vec = vec3_mul(vec3_new(0.0f, 1.0f, 0.0f), 2.0f * tan_half_fov);
-    Vec3 viewport_width_vec = vec3_mul(vec3_new(1.0f, 0.0f, 0.0f), aspect * 2.0f * tan_half_fov);
-    
-    Vec3 lower_left = vec3_sub(camera_pos, vec3_mul(viewport_width_vec, 0.5f));
-    lower_left = vec3_sub(lower_left, vec3_mul(viewport_height_vec, 0.5f));
-    lower_left = vec3_sub(lower_left, vec3_new(0.0f, 0.0f, 1.0f));
-    
-    // Update game
-    game_update(game, 0.0f);
-    game_populate_scene(game, scene);
-    
-    // Render
-    printf("Rendering game scene...\n");
-    for (int y = 0; y < IMAGE_HEIGHT; y++) {
-        if (y % 30 == 0) {
-            printf("  Row %d/%d\n", y, IMAGE_HEIGHT);
+    // Main game loop
+    while (window_is_open(window)) {
+        // Calculate delta time
+        LARGE_INTEGER current_count;
+        QueryPerformanceCounter(&current_count);
+        float delta_time = (float)(current_count.QuadPart - last_count.QuadPart) / frequency.QuadPart;
+        last_count = current_count;
+        
+        if (delta_time > 0.05f) delta_time = 0.05f;  // Cap delta time
+        
+        elapsed_time += delta_time;
+        frame_count++;
+        
+        // Update window events
+        window_update(window);
+        
+        // Handle input (ZQSD or WASD)
+        int key_up = window_key_pressed(window, 'Z') || window_key_pressed(window, 'W');
+        int key_down = window_key_pressed(window, 'S');
+        int key_left = window_key_pressed(window, 'Q') || window_key_pressed(window, 'A');
+        int key_right = window_key_pressed(window, 'D');
+        
+        if (window_key_pressed(window, VK_ESCAPE)) {
+            break;
         }
         
-        for (int x = 0; x < IMAGE_WIDTH; x++) {
-            Color pixel_color = {0.0f, 0.0f, 0.0f};
-            
-            // Antialiasing with multiple samples
-            for (int s = 0; s < SAMPLES_PER_PIXEL; s++) {
-                float u = (x + random_float()) / IMAGE_WIDTH;
-                float v = (y + random_float()) / IMAGE_HEIGHT;
-                
-                Vec3 ray_dir = vec3_add(lower_left, vec3_mul(viewport_width_vec, u));
-                ray_dir = vec3_add(ray_dir, vec3_mul(viewport_height_vec, v));
-                
-                Ray ray = ray_create(camera_pos, ray_dir);
-                Color col = trace_ray(ray, scene, MAX_DEPTH);
-                
-                pixel_color.r += col.r;
-                pixel_color.g += col.g;
-                pixel_color.b += col.b;
-            }
-            
-            // Average samples and apply gamma correction
-            pixel_color.r = sqrtf(pixel_color.r / SAMPLES_PER_PIXEL);
-            pixel_color.g = sqrtf(pixel_color.g / SAMPLES_PER_PIXEL);
-            pixel_color.b = sqrtf(pixel_color.b / SAMPLES_PER_PIXEL);
-            
-            image_set_pixel(img, x, y, pixel_color);
+        // Update game
+        game_handle_input(game, key_up, key_down, key_left, key_right);
+        game_update(game, delta_time);
+        
+        // Render
+        renderer_clear(renderer, 0x87CEEB);  // Sky blue background
+        renderer_draw_game(renderer, game, camera_pos, camera_dir);
+        window_draw_frame(window, renderer->framebuffer);
+        
+        // Display stats every second
+        if (elapsed_time >= 1.0f) {
+            printf("FPS: %d | Score: %d | Pos: (%.1f, %.1f, %.1f)\n",
+                   frame_count, game->score,
+                   game->player_pos.x, game->player_pos.y, game->player_pos.z);
+            elapsed_time = 0.0f;
+            frame_count = 0;
         }
     }
     
-    // Display stats
-    printf("Score: %d\n", game->score);
-    
-    // Save to BMP
-    display_update(display, img);
-    printf("Image saved to output.bmp\n");
+    printf("Game closed. Final score: %d\n", game->score);
     
     // Cleanup
-    display_free(display);
     game_free(game);
-    scene_free(scene);
-    image_free(img);
+    renderer_free(renderer);
+    window_free(window);
     
     return 0;
 }

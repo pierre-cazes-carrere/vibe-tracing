@@ -9,6 +9,7 @@
 #include "material.h"
 #include "raytracer.h"
 #include "display.h"
+#include "game.h"
 
 #define IMAGE_WIDTH 400
 #define IMAGE_HEIGHT 300
@@ -17,36 +18,36 @@
 int main() {
     srand(time(NULL));
     
-    printf("Ray Tracer - Version C\n");
+    printf("Ray Tracer Game - Version C\n");
     printf("Image: %dx%d, Samples: %d\n", IMAGE_WIDTH, IMAGE_HEIGHT, SAMPLES_PER_PIXEL);
+    
+    // Create game state
+    GameState* game = game_create();
     
     // Create scene
     Scene* scene = scene_create();
     
     // Add materials
-    int mat_red = scene_add_material(scene, material_diffuse(vec3_new(0.8f, 0.1f, 0.1f)));
-    int mat_blue = scene_add_material(scene, material_diffuse(vec3_new(0.1f, 0.2f, 0.8f)));
-    int mat_green = scene_add_material(scene, material_diffuse(vec3_new(0.1f, 0.8f, 0.1f)));
-    int mat_ground = scene_add_material(scene, material_diffuse(vec3_new(0.9f, 0.9f, 0.9f)));
-    int mat_metal = scene_add_material(scene, material_metal(vec3_new(0.8f, 0.8f, 0.8f), 0.2f));
+    int mat_player = scene_add_material(scene, material_diffuse(vec3_new(0.2f, 0.8f, 0.2f)));
+    int mat_enemy = scene_add_material(scene, material_diffuse(vec3_new(0.8f, 0.2f, 0.2f)));
+    int mat_gold = scene_add_material(scene, material_metal(vec3_new(1.0f, 0.8f, 0.0f), 0.15f));
+    int mat_ground = scene_add_material(scene, material_diffuse(vec3_new(0.6f, 0.6f, 0.6f)));
     
-    // Add objects
-    scene_add_object(scene, sphere_create(vec3_new(0.0f, -100.5f, -1.0f), 100.0f, mat_ground));
-    scene_add_object(scene, sphere_create(vec3_new(0.0f, 0.0f, -1.0f), 0.5f, mat_blue));
-    scene_add_object(scene, sphere_create(vec3_new(-1.0f, 0.0f, -1.0f), 0.5f, mat_red));
-    scene_add_object(scene, sphere_create(vec3_new(1.0f, 0.0f, -1.0f), 0.5f, mat_green));
-    scene_add_object(scene, sphere_create(vec3_new(0.5f, 0.3f, 0.5f), 0.3f, mat_metal));
+    game->player_material_id = mat_player;
+    
+    // Populate scene with game objects
+    game_populate_scene(game, scene);
     
     // Create image
     Image* img = image_create(IMAGE_WIDTH, IMAGE_HEIGHT);
     
     // Create display
-    Display* display = display_create(IMAGE_WIDTH, IMAGE_HEIGHT, "Ray Tracer");
+    Display* display = display_create(IMAGE_WIDTH, IMAGE_HEIGHT, "Ray Tracer Game");
     
     // Camera setup
-    Vec3 camera_pos = vec3_new(0.0f, 0.0f, 0.0f);
+    Vec3 camera_pos = vec3_new(0.0f, 1.5f, 3.0f);
     float aspect = (float)IMAGE_WIDTH / IMAGE_HEIGHT;
-    float fov = 90.0f;
+    float fov = 60.0f;
     float tan_half_fov = tanf((fov / 2.0f) * 3.14159f / 180.0f);
     
     Vec3 viewport_height_vec = vec3_mul(vec3_new(0.0f, 1.0f, 0.0f), 2.0f * tan_half_fov);
@@ -56,8 +57,12 @@ int main() {
     lower_left = vec3_sub(lower_left, vec3_mul(viewport_height_vec, 0.5f));
     lower_left = vec3_sub(lower_left, vec3_new(0.0f, 0.0f, 1.0f));
     
+    // Update game
+    game_update(game, 0.0f);
+    game_populate_scene(game, scene);
+    
     // Render
-    printf("Rendering...\n");
+    printf("Rendering game scene...\n");
     for (int y = 0; y < IMAGE_HEIGHT; y++) {
         if (y % 30 == 0) {
             printf("  Row %d/%d\n", y, IMAGE_HEIGHT);
@@ -91,12 +96,16 @@ int main() {
         }
     }
     
+    // Display stats
+    printf("Score: %d\n", game->score);
+    
     // Save to BMP
     display_update(display, img);
     printf("Image saved to output.bmp\n");
     
     // Cleanup
     display_free(display);
+    game_free(game);
     scene_free(scene);
     image_free(img);
     

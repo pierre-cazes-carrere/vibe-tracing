@@ -1,0 +1,9 @@
+build/
+bin/
+*.o
+*.a
+*.so
+*.exe
+*.ppm
+.DS_Store
+.vscode/settings.json

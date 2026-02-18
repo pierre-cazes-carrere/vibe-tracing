@@ -6,24 +6,48 @@
 GameState* game_create() {
     GameState* game = (GameState*)malloc(sizeof(GameState));
     
-    game->player_pos = vec3_new(0.0f, 0.0f, 0.0f);
-    game->player_radius = 0.5f;
-    game->player_material_id = 0;
+    // Initialize player
+    game->player.position = vec3_new(0.0f, 0.0f, 8.0f);
+    game->player.direction = vec3_new(0.0f, 0.0f, -1.0f);
+    game->player.radius = 0.4f;
+    game->player.material_id = 0;
+    game->player.weapon_cooldown = 0.0f;
     
-    game->enemy_count = 3;
+    // Initialize enemies - larger exploration area
+    game->enemy_count = 5;
     game->enemies = (Enemy*)malloc(game->enemy_count * sizeof(Enemy));
+    game->enemies[0] = (Enemy){vec3_new(-3.0f, 0.0f, -3.0f), 0.5f, 1, 0.0f, 0.0f};
+    game->enemies[1] = (Enemy){vec3_new(3.0f, 0.0f, -3.0f), 0.5f, 1, 0.0f, 0.0f};
+    game->enemies[2] = (Enemy){vec3_new(0.0f, 0.0f, -6.0f), 0.5f, 1, 0.0f, 0.0f};
+    game->enemies[3] = (Enemy){vec3_new(-4.0f, 0.0f, 2.0f), 0.5f, 1, 0.0f, 0.0f};
+    game->enemies[4] = (Enemy){vec3_new(4.0f, 0.0f, 2.0f), 0.5f, 1, 0.0f, 0.0f};
     
-    game->enemies[0] = (Enemy){vec3_new(-2.0f, 0.0f, -2.0f), 0.7f, 1, 0.0f, 0.0f};
-    game->enemies[1] = (Enemy){vec3_new(2.0f, 0.0f, -2.0f), 0.7f, 1, 0.0f, 0.0f};
-    game->enemies[2] = (Enemy){vec3_new(0.0f, 0.0f, -4.0f), 0.6f, 1, 0.0f, 0.0f};
+    // Initialize projectiles
+    game->projectile_capacity = 50;
+    game->projectile_count = 0;
+    game->projectiles = (Projectile*)malloc(game->projectile_capacity * sizeof(Projectile));
     
-    game->collectible_count = 4;
-    game->collectibles = (Collectible*)malloc(game->collectible_count * sizeof(Collectible));
+    // Initialize obstacles - walls and structures to explore
+    game->obstacle_count = 8;
+    game->obstacles = (Obstacle*)malloc(game->obstacle_count * sizeof(Obstacle));
     
-    game->collectibles[0] = (Collectible){vec3_new(-1.5f, 1.0f, 0.0f), 0.3f, 0};
-    game->collectibles[1] = (Collectible){vec3_new(1.5f, 1.0f, 0.0f), 0.3f, 0};
-    game->collectibles[2] = (Collectible){vec3_new(0.0f, 0.5f, 1.5f), 0.3f, 0};
-    game->collectibles[3] = (Collectible){vec3_new(0.0f, 1.0f, -3.0f), 0.3f, 0};
+    // Center pillar
+    game->obstacles[0] = (Obstacle){vec3_new(0.0f, 0.0f, 0.0f), vec3_new(1.0f, 2.0f, 1.0f), 1};
+    
+    // Four corner walls
+    game->obstacles[1] = (Obstacle){vec3_new(-5.0f, 0.0f, -5.0f), vec3_new(0.5f, 2.0f, 0.5f), 1};
+    game->obstacles[2] = (Obstacle){vec3_new(5.0f, 0.0f, -5.0f), vec3_new(0.5f, 2.0f, 0.5f), 1};
+    game->obstacles[3] = (Obstacle){vec3_new(-5.0f, 0.0f, 5.0f), vec3_new(0.5f, 2.0f, 0.5f), 1};
+    game->obstacles[4] = (Obstacle){vec3_new(5.0f, 0.0f, 5.0f), vec3_new(0.5f, 2.0f, 0.5f), 1};
+    
+    // Side walls
+    game->obstacles[5] = (Obstacle){vec3_new(-4.5f, 0.0f, 0.0f), vec3_new(0.3f, 2.0f, 6.0f), 1};
+    game->obstacles[6] = (Obstacle){vec3_new(4.5f, 0.0f, 0.0f), vec3_new(0.3f, 2.0f, 6.0f), 1};
+    game->obstacles[7] = (Obstacle){vec3_new(0.0f, 0.0f, -4.5f), vec3_new(6.0f, 2.0f, 0.3f), 1};
+    
+    // Initialize collectibles - removed, less important
+    game->collectible_count = 0;
+    game->collectibles = NULL;
     
     game->score = 0;
     game->time_elapsed = 0.0f;
@@ -34,79 +58,104 @@ GameState* game_create() {
 void game_free(GameState* game) {
     if (game) {
         free(game->enemies);
-        free(game->collectibles);
+        free(game->projectiles);
+        free(game->obstacles);
+        if (game->collectibles) free(game->collectibles);
         free(game);
     }
 }
 
+
 void game_update(GameState* game, float delta_time) {
     game->time_elapsed += delta_time;
     
-    // Player movement is now handled by game_handle_input
-    
-    // Animate enemies (bob up and down)
-    for (int i = 0; i < game->enemy_count; i++) {
-        game->enemies[i].bob_offset = sinf(game->time_elapsed * 2.0f + i) * 0.3f;
-        game->enemies[i].angle = game->time_elapsed * 0.5f;
+    // Update weapon cooldown
+    if (game->player.weapon_cooldown > 0.0f) {
+        game->player.weapon_cooldown -= delta_time;
     }
     
-    // Check collectible collisions
-    for (int i = 0; i < game->collectible_count; i++) {
-        if (game->collectibles[i].is_collected) continue;
+    // Update enemies - make them patrol/turn towards player
+    for (int i = 0; i < game->enemy_count; i++) {
+        // Bobbing animation
+        game->enemies[i].bob_offset = sinf(game->time_elapsed * 2.0f + i) * 0.2f;
+        game->enemies[i].angle = game->time_elapsed * 0.3f;
         
-        Vec3 diff = vec3_sub(game->collectibles[i].position, game->player_pos);
-        float dist = vec3_length(diff);
+        // Simple patrol - move in circles
+        game->enemies[i].position.x += cosf(game->time_elapsed * 0.5f + i * 1.256f) * 0.3f * delta_time;
+        game->enemies[i].position.z += sinf(game->time_elapsed * 0.5f + i * 1.256f) * 0.3f * delta_time;
+    }
+    
+    // Update projectiles
+    for (int i = 0; i < game->projectile_count; i++) {
+        game->projectiles[i].position = vec3_add(game->projectiles[i].position,
+            vec3_mul(game->projectiles[i].velocity, delta_time));
+        game->projectiles[i].lifetime -= delta_time;
         
-        if (dist < game->player_radius + game->collectibles[i].radius) {
-            game->collectibles[i].is_collected = 1;
-            game->score += 10;
+        if (game->projectiles[i].lifetime <= 0.0f) {
+            game->projectiles[i].is_active = 0;
+        }
+        
+        // Check collisions with enemies
+        for (int e = 0; e < game->enemy_count; e++) {
+            if (!game->enemies[e].radius) continue;
+            
+            Vec3 diff = vec3_sub(game->projectiles[i].position, game->enemies[e].position);
+            float dist = vec3_length(diff);
+            
+            if (dist < game->enemies[e].radius + 0.1f) {
+                game->projectiles[i].is_active = 0;
+                game->projectiles[i].lifetime = 0.0f;
+                game->enemies[e].radius = 0.0f;  // Mark as dead
+                game->score += 100;
+            }
         }
     }
+    
+    // Remove inactive projectiles
+    int write_idx = 0;
+    for (int i = 0; i < game->projectile_count; i++) {
+        if (game->projectiles[i].is_active) {
+            game->projectiles[write_idx++] = game->projectiles[i];
+        }
+    }
+    game->projectile_count = write_idx;
 }
+
 
 void game_populate_scene(GameState* game, Scene* scene) {
     // Add ground
-    Sphere ground = sphere_create(vec3_new(0.0f, -1.5f, 0.0f), 2.0f, scene->material_count - 1);
+    Sphere ground = sphere_create(vec3_new(0.0f, -1.5f, 0.0f), 5.0f, scene->material_count - 1);
     scene_add_object(scene, ground);
     
     // Add player
-    Sphere player = sphere_create(game->player_pos, game->player_radius, game->player_material_id);
+    Sphere player = sphere_create(game->player.position, game->player.radius, game->player.material_id);
     scene_add_object(scene, player);
     
-    // Add enemies with animation
+    // Add enemies
     for (int i = 0; i < game->enemy_count; i++) {
+        if (game->enemies[i].radius <= 0.0f) continue;  // Skip dead enemies
+        
         Vec3 enemy_pos = game->enemies[i].position;
         enemy_pos.y += game->enemies[i].bob_offset;
         
         Sphere enemy = sphere_create(enemy_pos, game->enemies[i].radius, game->enemies[i].material_id);
         scene_add_object(scene, enemy);
     }
-    
-    // Add collectibles
-    for (int i = 0; i < game->collectible_count; i++) {
-        if (game->collectibles[i].is_collected) continue;
-        
-        Sphere collectible = sphere_create(
-            game->collectibles[i].position,
-            game->collectibles[i].radius,
-            3 // gold material
-        );
-        scene_add_object(scene, collectible);
-    }
 }
 
-void game_handle_input(GameState* game, int key_up, int key_down, int key_left, int key_right) {
+
+void game_handle_input(GameState* game, int key_up, int key_down, int key_left, int key_right, int fire_weapon) {
     if (!game) return;
     
-    float speed = 3.0f;  // Movement speed
+    float speed = 5.0f;  // Movement speed
     Vec3 move = vec3_new(0.0f, 0.0f, 0.0f);
     
     // ZQSD or WASD controls
     if (key_up) {
-        move.z += speed;  // Move forward
+        move.z -= speed;  // Move forward (negative Z)
     }
     if (key_down) {
-        move.z -= speed;  // Move backward
+        move.z += speed;  // Move backward (positive Z)
     }
     if (key_left) {
         move.x -= speed;  // Move left
@@ -115,13 +164,51 @@ void game_handle_input(GameState* game, int key_up, int key_down, int key_left, 
         move.x += speed;  // Move right
     }
     
-    // Clamp player position to bounds
-    game->player_pos.x += move.x;
-    game->player_pos.z += move.z;
+    // Update direction based on movement
+    if (key_up || key_down || key_left || key_right) {
+        game->player.direction = vec3_normalize(move);
+    }
     
-    float bound = 3.0f;
-    if (game->player_pos.x > bound) game->player_pos.x = bound;
-    if (game->player_pos.x < -bound) game->player_pos.x = -bound;
-    if (game->player_pos.z > bound) game->player_pos.z = bound;
-    if (game->player_pos.z < -bound) game->player_pos.z = -bound;
+    // Apply movement with collision
+    Vec3 new_pos = vec3_add(game->player.position, vec3_mul(move, 1.0f/60.0f));  // Assuming 60FPS
+    
+    // Simple boundary clamping extended for exploration
+    float bound = 5.5f;
+    if (new_pos.x > bound) new_pos.x = bound;
+    if (new_pos.x < -bound) new_pos.x = -bound;
+    if (new_pos.z > bound) new_pos.z = bound;
+    if (new_pos.z < -bound) new_pos.z = -bound;
+    
+    // Simple obstacle collision (AABB approximation)
+    int collision = 0;
+    for (int i = 0; i < game->obstacle_count; i++) {
+        Vec3 half_size = vec3_mul(game->obstacles[i].size, 0.5f);
+        float dx = fabsf(new_pos.x - game->obstacles[i].position.x);
+        float dz = fabsf(new_pos.z - game->obstacles[i].position.z);
+        
+        if (dx < half_size.x + game->player.radius && dz < half_size.z + game->player.radius) {
+            collision = 1;
+            break;
+        }
+    }
+    
+    if (!collision) {
+        game->player.position = new_pos;
+    }
+    
+    // Fire weapon
+    if (fire_weapon && game->player.weapon_cooldown <= 0.0f && game->projectile_count < game->projectile_capacity) {
+        Vec3 projectile_pos = vec3_add(game->player.position, vec3_mul(game->player.direction, 0.5f));
+        Vec3 projectile_vel = vec3_mul(game->player.direction, 15.0f);  // 15 units/sec
+        
+        Projectile proj = (Projectile){
+            projectile_pos,
+            projectile_vel,
+            3.0f,  // 3 second lifetime
+            1
+        };
+        
+        game->projectiles[game->projectile_count++] = proj;
+        game->player.weapon_cooldown = 0.2f;  // 200ms cooldown between shots
+    }
 }

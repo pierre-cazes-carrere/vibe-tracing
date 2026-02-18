@@ -16,7 +16,7 @@ int main() {
     
     printf("Ray Tracer Game - Real-time Version\n");
     printf("Resolution: %dx%d\n", GAME_WIDTH, GAME_HEIGHT);
-    printf("Controls: ZQSD or WASD to move, ESC to quit\n");
+    printf("Controls: ZQSD or WASD to move, SPACE to fire, ESC to quit\n");
     
     // Create window
     GameWindow* window = window_create(GAME_WIDTH, GAME_HEIGHT, "Ray Tracer Game");
@@ -49,7 +49,7 @@ int main() {
     int frame_count = 0;
     float elapsed_time = 0.0f;
     
-    printf("\nGame started! Move with ZQSD/WASD, press ESC to quit\n");
+    printf("\nGame started! Humanoid combat arena. Destroy enemies to gain points!\n");
     
     // Main game loop
     while (window_is_open(window)) {
@@ -72,13 +72,14 @@ int main() {
         int key_down = window_key_pressed(window, 'S');
         int key_left = window_key_pressed(window, 'Q') || window_key_pressed(window, 'A');
         int key_right = window_key_pressed(window, 'D');
+        int fire_weapon = window_key_pressed(window, VK_SPACE);
         
         if (window_key_pressed(window, VK_ESCAPE)) {
             break;
         }
         
         // Update game
-        game_handle_input(game, key_up, key_down, key_left, key_right);
+        game_handle_input(game, key_up, key_down, key_left, key_right, fire_weapon);
         game_update(game, delta_time);
         
         // Render
@@ -88,9 +89,10 @@ int main() {
         
         // Display stats every second
         if (elapsed_time >= 1.0f) {
-            printf("FPS: %d | Score: %d | Pos: (%.1f, %.1f, %.1f)\n",
+            printf("FPS: %d | Score: %d | Pos: (%.1f, %.1f, %.1f) | Enemies: %d | Projectiles: %d\n",
                    frame_count, game->score,
-                   game->player_pos.x, game->player_pos.y, game->player_pos.z);
+                   game->player.position.x, game->player.position.y, game->player.position.z,
+                   game->enemy_count, game->projectile_count);
             elapsed_time = 0.0f;
             frame_count = 0;
         }

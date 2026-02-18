@@ -6,9 +6,16 @@
 
 typedef struct {
     Vec3 position;
-    float radius;
+    Vec3 velocity;
+    float lifetime;
     int is_active;
-} GameObject;
+} Projectile;
+
+typedef struct {
+    Vec3 position;
+    Vec3 size;  // width, height, depth
+    int is_solid;
+} Obstacle;
 
 typedef struct {
     Vec3 position;
@@ -25,12 +32,25 @@ typedef struct {
 } Collectible;
 
 typedef struct {
-    Vec3 player_pos;
-    float player_radius;
-    int player_material_id;
+    Vec3 position;
+    Vec3 direction;  // facing direction (normalized)
+    float radius;
+    int material_id;
+    float weapon_cooldown;
+} Player;
+
+typedef struct {
+    Player player;
     
     Enemy* enemies;
     int enemy_count;
+    
+    Projectile* projectiles;
+    int projectile_count;
+    int projectile_capacity;
+    
+    Obstacle* obstacles;
+    int obstacle_count;
     
     Collectible* collectibles;
     int collectible_count;
@@ -43,6 +63,6 @@ GameState* game_create();
 void game_free(GameState* game);
 void game_update(GameState* game, float delta_time);
 void game_populate_scene(GameState* game, Scene* scene);
-void game_handle_input(GameState* game, int key_up, int key_down, int key_left, int key_right);
+void game_handle_input(GameState* game, int key_up, int key_down, int key_left, int key_right, int fire_weapon);
 
 #endif

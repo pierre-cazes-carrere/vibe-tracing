@@ -8,6 +8,7 @@
 #include "sphere.h"
 #include "material.h"
 #include "raytracer.h"
+#include "display.h"
 
 #define IMAGE_WIDTH 400
 #define IMAGE_HEIGHT 300
@@ -38,6 +39,9 @@ int main() {
     
     // Create image
     Image* img = image_create(IMAGE_WIDTH, IMAGE_HEIGHT);
+    
+    // Create display
+    Display* display = display_create(IMAGE_WIDTH, IMAGE_HEIGHT, "Ray Tracer");
     
     // Camera setup
     Vec3 camera_pos = vec3_new(0.0f, 0.0f, 0.0f);
@@ -87,14 +91,12 @@ int main() {
         }
     }
     
-    // Save to PPM
-    if (image_write_ppm(img, "output.ppm")) {
-        printf("Image saved to output.ppm\n");
-    } else {
-        printf("Error saving image\n");
-    }
+    // Save to BMP
+    display_update(display, img);
+    printf("Image saved to output.bmp\n");
     
     // Cleanup
+    display_free(display);
     scene_free(scene);
     image_free(img);
     

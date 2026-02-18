@@ -13,6 +13,7 @@ typedef struct {
     Vec3 normal;
     float t;
     int hit;
+    int material_id;
 } RayHit;
 
 Ray ray_create(Vec3 origin, Vec3 direction);

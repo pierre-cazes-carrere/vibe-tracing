@@ -21,4 +21,8 @@ float vec3_length(Vec3 v);
 Vec3 vec3_normalize(Vec3 v);
 Vec3 vec3_cross(Vec3 a, Vec3 b);
 
+// Random utilities
+float random_float();
+float random_float_range(float min, float max);
+
 #endif

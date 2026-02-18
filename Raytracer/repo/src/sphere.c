@@ -39,6 +39,7 @@ int sphere_hit(Sphere sphere, Ray ray, float t_min, float t_max, RayHit* hit) {
         hit->normal = outward_normal;
     }
     
+    hit->material_id = sphere.material_id;
     hit->hit = 1;
     return 1;
 }

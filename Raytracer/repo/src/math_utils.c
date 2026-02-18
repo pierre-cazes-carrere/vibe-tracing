@@ -1,4 +1,5 @@
 #include "math_utils.h"
+#include <stdlib.h>
 
 Vec3 vec3_new(float x, float y, float z) {
     return (Vec3){x, y, z};
@@ -38,4 +39,12 @@ Vec3 vec3_cross(Vec3 a, Vec3 b) {
         a.z * b.x - a.x * b.z,
         a.x * b.y - a.y * b.x
     );
+}
+
+float random_float() {
+    return (float)rand() / (float)RAND_MAX;
+}
+
+float random_float_range(float min, float max) {
+    return min + (max - min) * random_float();
 }

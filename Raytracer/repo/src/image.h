@@ -2,10 +2,7 @@
 #define IMAGE_H
 
 #include <stdint.h>
-
-typedef struct {
-    float r, g, b;
-} Color;
+#include "math_utils.h"
 
 typedef struct {
     int width;

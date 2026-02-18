@@ -56,6 +56,84 @@ static void set_pixel_depth(Renderer* renderer, int x, int y, uint32_t color, fl
     }
 }
 
+void renderer_draw_sky_gothic(Renderer* renderer, float time_of_day) {
+    if (!renderer) return;
+    
+    // Gothic/dark atmosphere with time-based lighting
+    float hour_cycle = fmodf(time_of_day / 24.0f, 1.0f);
+    float darkness = sinf(hour_cycle * 3.14159f);  // 0 at night, 1 at day
+    darkness = darkness < 0.0f ? 0.0f : darkness;
+    
+    for (int y = 0; y < renderer->height / 2; y++) {
+        float t = (float)y / (renderer->height / 2);
+        
+        // Gothic dark purple/blue gradient
+        float r_val = 0.1f + (0.2f * darkness) + (t * 0.15f);
+        float g_val = 0.05f + (0.1f * darkness) + (t * 0.1f);
+        float b_val = 0.3f + (0.2f * darkness) + (t * 0.3f);
+        
+        // Add some mist/fog effect
+        float mist = sinf(y * 0.01f) * 0.05f;
+        b_val += mist;
+        
+        uint32_t sky_color = color_from_rgb(r_val, g_val, b_val);
+        
+        for (int x = 0; x < renderer->width; x++) {
+            set_pixel(renderer, x, y, sky_color);
+        }
+    }
+}
+
+void renderer_draw_ground_gothic(Renderer* renderer) {
+    if (!renderer) return;
+    
+    // Dark gothic stone ground
+    uint32_t ground_colors[3] = {
+        color_from_rgb(0.15f, 0.15f, 0.2f),   // Dark stone
+        color_from_rgb(0.2f, 0.2f, 0.25f),    // Lighter stone
+        color_from_rgb(0.1f, 0.1f, 0.15f)     // Shadow
+    };
+    
+    // Checkered stone pattern
+    for (int y = renderer->height / 2; y < renderer->height; y++) {
+        for (int x = 0; x < renderer->width; x++) {
+            int pattern = ((x / 32) + (y / 32)) % 3;
+            set_pixel(renderer, x, y, ground_colors[pattern]);
+        }
+    }
+}
+
+static void renderer_draw_box_3d(Renderer* renderer, Vec3 pos, Vec3 size, uint32_t color) {
+    if (!renderer) return;
+    
+    // Project center to 2D
+    int cx = (int)(pos.x * 50 + renderer->width / 2);
+    int cy = (int)(-pos.z * 50 + renderer->height / 2);
+    
+    // Dimensions in screen space
+    int half_w = (int)(size.x * 50 / 2);
+    int half_h = (int)(size.z * 50 / 2);
+    int height_pixels = (int)(size.y * 50);
+    
+    // Draw front face (solid)
+    for (int y = -height_pixels; y <= 0; y++) {
+        for (int x = -half_w; x <= half_w; x++) {
+            float depth_factor = 1.0f - (fabsf((float)x) / half_w) * 0.2f;
+            
+            uint32_t r_val = ((color >> 16) & 0xFF);
+            uint32_t g_val = ((color >> 8) & 0xFF);
+            uint32_t b_val = (color & 0xFF);
+            
+            r_val = (uint32_t)(r_val * depth_factor);
+            g_val = (uint32_t)(g_val * depth_factor);
+            b_val = (uint32_t)(b_val * depth_factor);
+            
+            uint32_t shaded = (r_val << 16) | (g_val << 8) | b_val;
+            set_pixel_depth(renderer, cx + x, cy + y, shaded, pos.z);
+        }
+    }
+}
+
 void renderer_draw_sphere(Renderer* renderer, Vec3 pos, float radius, uint32_t color, Vec3 light) {
     if (!renderer) return;
     
@@ -168,6 +246,35 @@ void renderer_draw_humanoid_3d(Renderer* renderer, Humanoid* humanoid, uint32_t 
     renderer_draw_sphere(renderer, humanoid->head_pos, humanoid->head_radius, head_color, vec3_new(1.0f, 1.0f, 1.0f));
 }
 
+void renderer_draw_structure_3d(Renderer* renderer, Structure* structure) {
+    if (!renderer || !structure) return;
+    
+    // Color based on structure type for gothic aesthetics
+    uint32_t color;
+    switch (structure->type) {
+        case ARCH_COLUMN:
+            color = color_from_rgb(0.3f, 0.3f, 0.35f);  // Gray stone
+            break;
+        case ARCH_WALL:
+            color = color_from_rgb(0.25f, 0.25f, 0.3f);  // Dark stone
+            break;
+        case ARCH_ARCH:
+            color = color_from_rgb(0.35f, 0.35f, 0.4f);  // Lighter arch
+            break;
+        case ARCH_TOWER:
+            color = color_from_rgb(0.2f, 0.2f, 0.25f);  // Very dark tower
+            break;
+        case ARCH_RUIN:
+            color = color_from_rgb(0.28f, 0.28f, 0.32f);  // Ruin stone
+            break;
+        default:
+            color = color_from_rgb(0.3f, 0.3f, 0.3f);
+    }
+    
+    // Draw as 3D box
+    renderer_draw_box_3d(renderer, structure->position, structure->size, color);
+}
+
 void renderer_draw_projectile(Renderer* renderer, Vec3 pos, uint32_t color) {
     if (!renderer) return;
     
@@ -203,35 +310,18 @@ void renderer_draw_obstacle(Renderer* renderer, Vec3 pos, Vec3 size, uint32_t co
     }
 }
 
-void renderer_draw_game(Renderer* renderer, GameState* game, Vec3 camera_pos, Vec3 camera_dir) {
-    if (!renderer || !game) return;
+void renderer_draw_game(Renderer* renderer, GameState* game, Environment* env, Vec3 camera_pos, Vec3 camera_dir) {
+    if (!renderer || !game || !env) return;
     
-    // Sky gradient background (top)
-    for (int y = 0; y < renderer->height / 2; y++) {
-        float t = (float)y / (renderer->height / 2);
-        uint32_t sky_color = color_from_rgb(
-            0.2f + 0.8f * (1.0f - t),
-            0.5f + 0.5f * (1.0f - t),
-            1.0f
-        );
-        
-        for (int x = 0; x < renderer->width; x++) {
-            set_pixel(renderer, x, y, sky_color);
-        }
-    }
+    // Draw gothic sky
+    renderer_draw_sky_gothic(renderer, env->time_of_day);
     
-    // Ground (bottom)
-    uint32_t ground_color = color_from_rgb(0.2f, 0.6f, 0.2f);
-    for (int y = renderer->height / 2; y < renderer->height; y++) {
-        for (int x = 0; x < renderer->width; x++) {
-            set_pixel(renderer, x, y, ground_color);
-        }
-    }
+    // Draw gothic ground
+    renderer_draw_ground_gothic(renderer);
     
-    // Draw obstacles (walls/environment)
-    uint32_t wall_color = color_from_rgb(0.5f, 0.5f, 0.5f);
-    for (int i = 0; i < game->obstacle_count; i++) {
-        renderer_draw_obstacle(renderer, game->obstacles[i].position, game->obstacles[i].size, wall_color);
+    // Draw all architectural structures
+    for (int i = 0; i < env->structure_count; i++) {
+        renderer_draw_structure_3d(renderer, &env->structures[i]);
     }
     
     // Draw enemies as humanoids
@@ -245,14 +335,14 @@ void renderer_draw_game(Renderer* renderer, GameState* game, Vec3 camera_pos, Ve
         
         // Create temporary humanoid for rendering
         Humanoid enemy_h = humanoid_create(enemy_pos, enemy_dir);
-        enemy_h.animation_time = game->time_elapsed + i;  // Offset for varied animation
+        enemy_h.animation_time = env->time_of_day * 10.0f + i;  // Offset for varied animation
         humanoid_compute_parts(&enemy_h);
         
         renderer_draw_humanoid_3d(renderer, &enemy_h, enemy_color);
     }
     
     // Draw projectiles
-    uint32_t projectile_color = color_from_rgb(1.0f, 1.0f, 0.0f);
+    uint32_t projectile_color = color_from_rgb(1.0f, 0.8f, 0.0f);
     for (int i = 0; i < game->projectile_count; i++) {
         renderer_draw_projectile(renderer, game->projectiles[i].position, projectile_color);
     }
@@ -260,7 +350,7 @@ void renderer_draw_game(Renderer* renderer, GameState* game, Vec3 camera_pos, Ve
     // Draw player as humanoid
     uint32_t player_color = color_from_rgb(0.0f, 0.8f, 0.0f);
     Humanoid player_h = humanoid_create(game->player.position, game->player.direction);
-    player_h.animation_time = game->time_elapsed;
+    player_h.animation_time = env->time_of_day * 10.0f;
     humanoid_compute_parts(&player_h);
     renderer_draw_humanoid_3d(renderer, &player_h, player_color);
 }

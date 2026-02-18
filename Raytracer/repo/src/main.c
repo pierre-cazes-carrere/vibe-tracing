@@ -84,8 +84,8 @@ int main() {
         game_update(game, delta_time);
         
         // Render
-        renderer_clear(renderer, 0x87CEEB);  // Sky blue background
-        renderer_draw_game(renderer, game, camera_pos, camera_dir);
+        renderer_clear(renderer, 0x000000);  // Black background (overwritten by sky)
+        renderer_draw_game(renderer, game, game->environment, camera_pos, camera_dir);
         window_draw_frame(window, renderer->framebuffer);
         
         // Display stats every second

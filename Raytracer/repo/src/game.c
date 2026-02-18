@@ -27,23 +27,9 @@ GameState* game_create() {
     game->projectile_count = 0;
     game->projectiles = (Projectile*)malloc(game->projectile_capacity * sizeof(Projectile));
     
-    // Initialize obstacles - walls and structures to explore
-    game->obstacle_count = 8;
-    game->obstacles = (Obstacle*)malloc(game->obstacle_count * sizeof(Obstacle));
-    
-    // Center pillar
-    game->obstacles[0] = (Obstacle){vec3_new(0.0f, 0.0f, 0.0f), vec3_new(1.0f, 2.0f, 1.0f), 1};
-    
-    // Four corner walls
-    game->obstacles[1] = (Obstacle){vec3_new(-5.0f, 0.0f, -5.0f), vec3_new(0.5f, 2.0f, 0.5f), 1};
-    game->obstacles[2] = (Obstacle){vec3_new(5.0f, 0.0f, -5.0f), vec3_new(0.5f, 2.0f, 0.5f), 1};
-    game->obstacles[3] = (Obstacle){vec3_new(-5.0f, 0.0f, 5.0f), vec3_new(0.5f, 2.0f, 0.5f), 1};
-    game->obstacles[4] = (Obstacle){vec3_new(5.0f, 0.0f, 5.0f), vec3_new(0.5f, 2.0f, 0.5f), 1};
-    
-    // Side walls
-    game->obstacles[5] = (Obstacle){vec3_new(-4.5f, 0.0f, 0.0f), vec3_new(0.3f, 2.0f, 6.0f), 1};
-    game->obstacles[6] = (Obstacle){vec3_new(4.5f, 0.0f, 0.0f), vec3_new(0.3f, 2.0f, 6.0f), 1};
-    game->obstacles[7] = (Obstacle){vec3_new(0.0f, 0.0f, -4.5f), vec3_new(6.0f, 2.0f, 0.3f), 1};
+    // Initialize gothic environment
+    game->environment = environment_create();
+    environment_populate_gothic_arena(game->environment);
     
     // Initialize collectibles - removed, less important
     game->collectible_count = 0;
@@ -59,8 +45,8 @@ void game_free(GameState* game) {
     if (game) {
         free(game->enemies);
         free(game->projectiles);
-        free(game->obstacles);
         if (game->collectibles) free(game->collectibles);
+        environment_free(game->environment);
         free(game);
     }
 }
@@ -68,6 +54,11 @@ void game_free(GameState* game) {
 
 void game_update(GameState* game, float delta_time) {
     game->time_elapsed += delta_time;
+    
+    // Update environment (time of day, atmosphere)
+    if (game->environment) {
+        environment_update(game->environment, delta_time);
+    }
     
     // Update weapon cooldown
     if (game->player.weapon_cooldown > 0.0f) {
@@ -145,7 +136,7 @@ void game_populate_scene(GameState* game, Scene* scene) {
 
 
 void game_handle_input(GameState* game, int key_up, int key_down, int key_left, int key_right, int fire_weapon) {
-    if (!game) return;
+    if (!game || !game->environment) return;
     
     float speed = 5.0f;  // Movement speed
     Vec3 move = vec3_new(0.0f, 0.0f, 0.0f);
@@ -179,12 +170,13 @@ void game_handle_input(GameState* game, int key_up, int key_down, int key_left, 
     if (new_pos.z > bound) new_pos.z = bound;
     if (new_pos.z < -bound) new_pos.z = -bound;
     
-    // Simple obstacle collision (AABB approximation)
+    // Collision detection with environmental structures
     int collision = 0;
-    for (int i = 0; i < game->obstacle_count; i++) {
-        Vec3 half_size = vec3_mul(game->obstacles[i].size, 0.5f);
-        float dx = fabsf(new_pos.x - game->obstacles[i].position.x);
-        float dz = fabsf(new_pos.z - game->obstacles[i].position.z);
+    for (int i = 0; i < game->environment->structure_count; i++) {
+        Structure* s = &game->environment->structures[i];
+        Vec3 half_size = vec3_mul(s->size, 0.5f);
+        float dx = fabsf(new_pos.x - s->position.x);
+        float dz = fabsf(new_pos.z - s->position.z);
         
         if (dx < half_size.x + game->player.radius && dz < half_size.z + game->player.radius) {
             collision = 1;

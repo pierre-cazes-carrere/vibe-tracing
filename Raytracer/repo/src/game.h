@@ -3,6 +3,7 @@
 
 #include "math_utils.h"
 #include "raytracer.h"
+#include "environment.h"
 
 typedef struct {
     Vec3 position;
@@ -10,12 +11,6 @@ typedef struct {
     float lifetime;
     int is_active;
 } Projectile;
-
-typedef struct {
-    Vec3 position;
-    Vec3 size;  // width, height, depth
-    int is_solid;
-} Obstacle;
 
 typedef struct {
     Vec3 position;
@@ -49,8 +44,7 @@ typedef struct {
     int projectile_count;
     int projectile_capacity;
     
-    Obstacle* obstacles;
-    int obstacle_count;
+    Environment* environment;  // Gothic environment with structures
     
     Collectible* collectibles;
     int collectible_count;

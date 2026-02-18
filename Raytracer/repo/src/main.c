@@ -6,6 +6,7 @@
 #include "renderer.h"
 #include "game.h"
 #include "math_utils.h"
+#include "humanoid.h"
 
 #define GAME_WIDTH 1024
 #define GAME_HEIGHT 768

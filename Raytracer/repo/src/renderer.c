@@ -8,12 +8,14 @@ Renderer* renderer_create(int width, int height) {
     renderer->width = width;
     renderer->height = height;
     renderer->framebuffer = (uint32_t*)malloc(width * height * sizeof(uint32_t));
+    renderer->depthbuffer = (float*)malloc(width * height * sizeof(float));
     return renderer;
 }
 
 void renderer_free(Renderer* renderer) {
     if (renderer) {
         free(renderer->framebuffer);
+        free(renderer->depthbuffer);
         free(renderer);
     }
 }
@@ -22,6 +24,7 @@ void renderer_clear(Renderer* renderer, uint32_t color) {
     if (!renderer) return;
     for (int i = 0; i < renderer->width * renderer->height; i++) {
         renderer->framebuffer[i] = color;
+        renderer->depthbuffer[i] = 999999.0f;  // Far depth
     }
 }
 
@@ -40,6 +43,16 @@ static uint32_t color_from_rgb(float r, float g, float b) {
 static void set_pixel(Renderer* renderer, int x, int y, uint32_t color) {
     if (x >= 0 && x < renderer->width && y >= 0 && y < renderer->height) {
         renderer->framebuffer[y * renderer->width + x] = color;
+    }
+}
+
+static void set_pixel_depth(Renderer* renderer, int x, int y, uint32_t color, float depth) {
+    if (x >= 0 && x < renderer->width && y >= 0 && y < renderer->height) {
+        int idx = y * renderer->width + x;
+        if (depth < renderer->depthbuffer[idx]) {
+            renderer->framebuffer[idx] = color;
+            renderer->depthbuffer[idx] = depth;
+        }
     }
 }
 
@@ -73,51 +86,86 @@ void renderer_draw_sphere(Renderer* renderer, Vec3 pos, float radius, uint32_t c
                     b_val = (uint32_t)(b_val * shade);
                     
                     uint32_t shaded_color = (r_val << 16) | (g_val << 8) | b_val;
-                    set_pixel(renderer, px, py, shaded_color);
+                    set_pixel_depth(renderer, px, py, shaded_color, pos.z);
                 }
             }
         }
     }
 }
 
-void renderer_draw_humanoid(Renderer* renderer, Vec3 pos, Vec3 direction, uint32_t color) {
+static void renderer_draw_cylinder(Renderer* renderer, Vec3 start, Vec3 end, float radius, uint32_t color) {
     if (!renderer) return;
     
-    // Project position to 2D
-    int cx = (int)(pos.x * 50 + renderer->width / 2);
-    int cy = (int)(-pos.z * 50 + renderer->height / 2);
+    // Simple cylinder rendering as a thick line
+    int x1 = (int)(start.x * 50 + renderer->width / 2);
+    int y1 = (int)(-start.z * 50 + renderer->height / 2);
+    int x2 = (int)(end.x * 50 + renderer->width / 2);
+    int y2 = (int)(-end.z * 50 + renderer->height / 2);
     
-    // Draw humanoid as a simple figure: head + body + arms/legs
-    int head_r = 8;
+    int r = (int)(radius * 50);
     
-    // Draw head (circle)
-    for (int y = -head_r; y <= head_r; y++) {
-        for (int x = -head_r; x <= head_r; x++) {
-            if (x * x + y * y <= head_r * head_r) {
-                set_pixel(renderer, cx + x, cy + y - 15, color);
+    // Bresenham line algorithm with thickness
+    int dx = abs(x2 - x1);
+    int dy = abs(y2 - y1);
+    int sx = (x1 < x2) ? 1 : -1;
+    int sy = (y1 < y2) ? 1 : -1;
+    int err = dx - dy;
+    
+    float avg_z = (start.z + end.z) * 0.5f;
+    
+    while (1) {
+        // Draw circle at this point
+        for (int cy = -r; cy <= r; cy++) {
+            for (int cx = -r; cx <= r; cx++) {
+                if (cx * cx + cy * cy <= r * r) {
+                    int px = x1 + cx;
+                    int py = y1 + cy;
+                    float shade = 1.0f - (fabsf((float)cx) / r) * 0.2f;
+                    
+                    uint32_t r_val = ((color >> 16) & 0xFF);
+                    uint32_t g_val = ((color >> 8) & 0xFF);
+                    uint32_t b_val = (color & 0xFF);
+                    
+                    r_val = (uint32_t)(r_val * shade);
+                    g_val = (uint32_t)(g_val * shade);
+                    b_val = (uint32_t)(b_val * shade);
+                    
+                    uint32_t shaded = (r_val << 16) | (g_val << 8) | b_val;
+                    set_pixel_depth(renderer, px, py, shaded, avg_z);
+                }
             }
         }
+        
+        if (x1 == x2 && y1 == y2) break;
+        int e2 = 2 * err;
+        if (e2 > -dy) { err -= dy; x1 += sx; }
+        if (e2 < dx) { err += dx; y1 += sy; }
     }
+}
+
+void renderer_draw_humanoid_3d(Renderer* renderer, Humanoid* humanoid, uint32_t color) {
+    if (!renderer || !humanoid) return;
     
-    // Draw body (rectangle)
-    for (int y = -12; y <= 12; y++) {
-        for (int x = -6; x <= 6; x++) {
-            set_pixel(renderer, cx + x, cy + y, color);
-        }
-    }
+    // Draw legs (back to front for proper depth)
+    float limb_radius = humanoid->limb_scale * 0.6f;
     
-    // Draw direction indicator (eye/weapon pointing)
-    int dir_scale = 15;
-    int aim_x = (int)(direction.x * dir_scale);
-    int aim_z = (int)(direction.z * dir_scale);
-    int aim_y = (int)(-aim_z * 50);
-    aim_z = aim_x;
-    aim_x = aim_z;
+    // Left leg
+    renderer_draw_cylinder(renderer, humanoid->torso_pos, humanoid->left_leg_pos, limb_radius, color);
     
-    for (int i = 0; i < 8; i++) {
-        set_pixel(renderer, cx + i * (aim_x > 0 ? 1 : -1), cy + i * (aim_y > 0 ? 1 : -1), 
-                 color_from_rgb(1.0f, 1.0f, 0.0f));
-    }
+    // Right leg  
+    renderer_draw_cylinder(renderer, humanoid->torso_pos, humanoid->right_leg_pos, limb_radius, color);
+    
+    // Draw torso as a cylinder
+    Vec3 torso_top = vec3_add(humanoid->torso_pos, vec3_new(0.0f, 0.3f, 0.0f));
+    renderer_draw_cylinder(renderer, humanoid->torso_pos, torso_top, humanoid->limb_scale * 1.2f, color);
+    
+    // Draw arms
+    renderer_draw_cylinder(renderer, torso_top, humanoid->left_arm_pos, limb_radius, color);
+    renderer_draw_cylinder(renderer, torso_top, humanoid->right_arm_pos, limb_radius, color);
+    
+    // Draw head as sphere
+    uint32_t head_color = color;  // Skin tone
+    renderer_draw_sphere(renderer, humanoid->head_pos, humanoid->head_radius, head_color, vec3_new(1.0f, 1.0f, 1.0f));
 }
 
 void renderer_draw_projectile(Renderer* renderer, Vec3 pos, uint32_t color) {
@@ -131,7 +179,7 @@ void renderer_draw_projectile(Renderer* renderer, Vec3 pos, uint32_t color) {
     for (int y = -2; y <= 2; y++) {
         for (int x = -2; x <= 2; x++) {
             if (x * x + y * y <= 4) {
-                set_pixel(renderer, px + x, py + y, color);
+                set_pixel_depth(renderer, px + x, py + y, color, pos.z);
             }
         }
     }
@@ -150,7 +198,7 @@ void renderer_draw_obstacle(Renderer* renderer, Vec3 pos, Vec3 size, uint32_t co
     
     for (int y = -half_h; y <= half_h; y++) {
         for (int x = -half_w; x <= half_w; x++) {
-            set_pixel(renderer, cx + x, cy + y, color);
+            set_pixel_depth(renderer, cx + x, cy + y, color, pos.z);
         }
     }
 }
@@ -187,18 +235,20 @@ void renderer_draw_game(Renderer* renderer, GameState* game, Vec3 camera_pos, Ve
     }
     
     // Draw enemies as humanoids
-    uint32_t enemy_color = color_from_rgb(1.0f, 0.2f, 0.2f);
+    uint32_t enemy_color = color_from_rgb(0.8f, 0.1f, 0.1f);
     for (int i = 0; i < game->enemy_count; i++) {
         if (game->enemies[i].radius <= 0.0f) continue;  // Skip dead enemies
         
         Vec3 enemy_pos = game->enemies[i].position;
-        enemy_pos.y += game->enemies[i].bob_offset;
-        
-        // Enemy direction (towards player)
         Vec3 to_player = vec3_sub(game->player.position, enemy_pos);
         Vec3 enemy_dir = vec3_normalize(to_player);
         
-        renderer_draw_humanoid(renderer, enemy_pos, enemy_dir, enemy_color);
+        // Create temporary humanoid for rendering
+        Humanoid enemy_h = humanoid_create(enemy_pos, enemy_dir);
+        enemy_h.animation_time = game->time_elapsed + i;  // Offset for varied animation
+        humanoid_compute_parts(&enemy_h);
+        
+        renderer_draw_humanoid_3d(renderer, &enemy_h, enemy_color);
     }
     
     // Draw projectiles
@@ -208,6 +258,9 @@ void renderer_draw_game(Renderer* renderer, GameState* game, Vec3 camera_pos, Ve
     }
     
     // Draw player as humanoid
-    uint32_t player_color = color_from_rgb(0.0f, 1.0f, 0.0f);
-    renderer_draw_humanoid(renderer, game->player.position, game->player.direction, player_color);
+    uint32_t player_color = color_from_rgb(0.0f, 0.8f, 0.0f);
+    Humanoid player_h = humanoid_create(game->player.position, game->player.direction);
+    player_h.animation_time = game->time_elapsed;
+    humanoid_compute_parts(&player_h);
+    renderer_draw_humanoid_3d(renderer, &player_h, player_color);
 }
